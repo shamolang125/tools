@@ -20,19 +20,20 @@ int DcdGetData(DCD_QUE_TYPE *que, DECODE_BIN_TYPE *dec, u32 num_kind, void *dat)
 {
     u8 tmp = 0;
     u32 i = 0;
-    // u32 min_len = 0;
+    u32 min_len = 0;
     u8 *dat_tmp = (u8 *)dat;
     u32 len_tmp = 0;
     u8 data_protect = 0;//数据保护标记
 
-	//  min_len = dec[0].struct_len;
-    // for(i = 0; i < num_kind; i++){
-    //     if(min_len > dec[i].struct_len){
-    //         min_len = dec[i].struct_len;
-    //     }
-    // }
-    
-    while(DcdQueGetUsed(que) > 0){//有数据可取
+	//获取最小数据长度
+	min_len = dec[0].struct_len;
+	for(i = 0; i < num_kind; i++){
+		if(min_len > dec[i].struct_len){
+			min_len = dec[i].struct_len;
+		}
+	}
+	DcdQueNeaten(que);	//解码前先整理队列
+    while(DcdQueGetUsed(que) >= min_len){//有足够数据可取
         if(DcdQuePopByteTest(que, &tmp) != 1){//未获取到数据
             break;
         }
@@ -51,8 +52,8 @@ int DcdGetData(DCD_QUE_TYPE *que, DECODE_BIN_TYPE *dec, u32 num_kind, void *dat)
                     }else{
                         data_protect = 1;//数据保护，防止破坏大包数据
                     }
-                }
-            }
+                }// end if(len_tmp > 0 && memcmp(dec[i].head, dat_tmp, len_tmp) == 0)
+            }// end if(tmp == dec[i].head[0])
         }
 
         if(data_protect){//数据保护
@@ -63,7 +64,6 @@ int DcdGetData(DCD_QUE_TYPE *que, DECODE_BIN_TYPE *dec, u32 num_kind, void *dat)
         }else{
 			DcdQuePopByte(que, NULL);//直接出队1字节
 		}
-        
     }
 
     return -1;//未获取到数据
@@ -250,7 +250,7 @@ u32 DcdQuePop(DCD_QUE_TYPE *que, u8 *buf, u32 len)
 	return len;
 }
 
-//仅从队列中读取测试数据,不改变队列头尾，每次调用都是从当前队列head获取数据
+//仅从队列中读取测试数据,不改变队列头尾，每次调用都是从当前队列head_bro获取数据
 //调用该函数后再调用DcdQuePopACK()函数，等于一次DcdQuePop()操作
 //每次测试数据量必须小于队列总长度（禁止等于或大于）
 u32 DcdQuePopTest(DCD_QUE_TYPE *que, u8 *buf, u32 len)
@@ -313,6 +313,18 @@ int DcdQuePopACK(DCD_QUE_TYPE *que)
     return 0;
 }
 
+/**
+ * @brief  解码队列整理,便于下一次解码
+ * @note   
+ * @param  *que: 
+ * @retval 
+ */
+int DcdQueNeaten(DCD_QUE_TYPE *que)
+{
+	que->head_bro = que->head_tmp = que->head;
+	return 0;
+}
+
 //获取队列可用size
 u32 DcdQueGetRemain(DCD_QUE_TYPE *que)
 {
@@ -337,11 +349,11 @@ u32 QueGetBroUsed(DCD_QUE_TYPE *que)
 	if(!que){
 		return 0;
 	}
-	if(que->head <= que->head_bro){
-		len = que->head_bro - que->head;
+	if(que->tail >= que->head_bro){
+		len = que->tail - que->head_bro;
 	}else{
-		len = que->size - que->head + que->head_bro;
+		len = que->size - que->head_bro + que->tail;
 	}
-	return que->used - len;
+	return len;
 }
 
